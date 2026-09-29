@@ -1,0 +1,55 @@
+{
+  "name": "augmenta-client-sdk",
+  "version": "0.1.0",
+  "description": "JavaScript/TypeScript client SDK for consuming Augmenta WebSocket output streams in web and Node.js applications.",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Augmenta SAS",
+  "homepage": "https://augmenta.tech",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Augmenta-tech/AugmentaClientSDK-JS.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Augmenta-tech/AugmentaClientSDK-JS/issues"
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_LICENSES"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "clean": "node ./scripts/clean.mjs",
+    "build": "npm run clean && tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && node ./scripts/postbuild.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "check": "npm run test && npm pack --dry-run"
+  },
+  "devDependencies": {
+    "typescript": "5.8.3"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "augmenta",
+    "websocket",
+    "tracking",
+    "spatial",
+    "realtime",
+    "threejs",
+    "max",
+    "max4live"
+  ]
+}
