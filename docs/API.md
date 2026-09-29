@@ -7,12 +7,12 @@ Negotiates what an Augmenta WebSocket Output sends to the client.
 Important options include:
 
 - `version` — protocol version, V2 by default;
-- `tags` — optional server-side Augmenta tagss;
+- `tags` — optional server-side Augmenta tags;
 - `downSample` — point-cloud downsampling factor;
 - `streamClouds` — raw scene point clouds;
 - `streamClusters` — tracked Augmenta objects;
 - `streamClusterPoints` — points belonging to tracked clusters;
-- `streamZonePoints` — Optional point clouds attached to zone events;
+- `streamZonePoints` — optional point clouds attached to zone events;
 - `boxRotationMode` — radians, degrees or quaternions;
 - `axisTransform` — coordinate system transformation requested from the server;
 - `useCompression` — request Zstd-compressed binary frames;
