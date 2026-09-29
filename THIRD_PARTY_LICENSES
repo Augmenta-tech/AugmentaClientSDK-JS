@@ -1,0 +1,6 @@
+THIRD-PARTY SOFTWARE
+====================
+
+The published Augmenta Client JavaScript SDK has no third-party runtime dependency.
+
+Development tooling declared in package.json is installed separately by developers and remains governed by its own license terms.
