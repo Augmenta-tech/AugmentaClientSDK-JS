@@ -44,6 +44,19 @@ function parseContainer(value: unknown): Container {
   const children = rawChildren.map(parseContainer);
   const rawType = typeof value.type === 'string' ? value.type : '';
 
+  if (rawType.toLowerCase() === 'world') {
+    return new Container(
+      ContainerType.World,
+      name,
+      address,
+      position,
+      rotation,
+      color,
+      {},
+      children
+    );
+  }
+
   if (rawType === 'Zone') {
     const shape = isRecord(value.shape) ? value.shape : {};
     const rawShapeType = typeof shape.type === 'string' ? shape.type : '';

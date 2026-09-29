@@ -184,6 +184,7 @@ export enum ControlMessageType {
 export enum ContainerType {
   Unknown = 'Unknown',
   Container = 'Container',
+  World = 'World',
   Zone = 'Zone',
   Scene = 'Scene'
 }
@@ -250,6 +251,7 @@ export class Container {
   ) {}
 
   getType(): ContainerType { return this.type; }
+  isWorld(): boolean { return this.type === ContainerType.World; }
   isZone(): boolean { return this.type === ContainerType.Zone; }
   isScene(): boolean { return this.type === ContainerType.Scene; }
   isContainer(): boolean { return this.type === ContainerType.Container; }

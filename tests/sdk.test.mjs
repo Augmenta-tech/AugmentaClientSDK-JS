@@ -148,7 +148,7 @@ test('Control setup messages expose scene and zone hierarchy', () => {
     setup: {
       world: {
         name: 'World',
-        type: 'Container',
+        type: 'world',
         children: {
           scene: {
             name: 'Scene',
@@ -173,6 +173,8 @@ test('Control setup messages expose scene and zone hierarchy', () => {
 
   assert.equal(message.isSetup(), true);
   assert.equal(message.getServerProtocolVersion(), 2);
+  assert.equal(message.getRootObject().getType(), ContainerType.World);
+  assert.equal(message.getRootObject().isWorld(), true);
   const scene = message.getRootObject().getChildren()[0];
   assert.equal(scene.getType(), ContainerType.Scene);
   assert.deepEqual(scene.getSceneParameters().size, [10, 3, 8]);
