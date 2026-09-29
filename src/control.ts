@@ -36,7 +36,12 @@ function parseContainer(value: unknown): Container {
   const position = vec3(value.position);
   const rotation = vec3(value.rotation);
   const color = vec4(value.color);
-  const children = Array.isArray(value.children) ? value.children.map(parseContainer) : [];
+  const rawChildren = Array.isArray(value.children)
+    ? value.children
+    : isRecord(value.children)
+      ? Object.values(value.children)
+      : [];
+  const children = rawChildren.map(parseContainer);
   const rawType = typeof value.type === 'string' ? value.type : '';
 
   if (rawType === 'Zone') {
@@ -94,6 +99,27 @@ function parseContainer(value: unknown): Container {
   return new Container(type, name, address, position, rotation, color, {}, children);
 }
 
+function parseContainerPayload(value: unknown): Container {
+  if (Array.isArray(value)) return parseContainer(value[0]);
+
+  let current = value;
+  for (let depth = 0; depth < 3 && isRecord(current); depth++) {
+    if (
+      typeof current.type === 'string' ||
+      typeof current.address === 'string' ||
+      typeof current.name === 'string'
+    ) {
+      return parseContainer(current);
+    }
+
+    const nested = Object.values(current).find(isRecord);
+    if (!nested) break;
+    current = nested;
+  }
+
+  return parseContainer(current);
+}
+
 export function parseControlMessage(rawMessage: string): ControlMessage {
   const parsed: unknown = JSON.parse(rawMessage);
   if (!isRecord(parsed)) throw new TypeError('Augmenta control message must be a JSON object.');
@@ -118,20 +144,10 @@ export function parseControlMessage(rawMessage: string): ControlMessage {
     );
   }
 
-  if (Array.isArray(parsed.update) && parsed.update.length > 0) {
+  if (Array.isArray(parsed.update) || isRecord(parsed.update)) {
     return new ControlMessage(
       ControlMessageType.Update,
-      parseContainer(parsed.update[0]),
-      status,
-      errorMessage,
-      serverProtocolVersion
-    );
-  }
-
-  if (isRecord(parsed.update)) {
-    return new ControlMessage(
-      ControlMessageType.Update,
-      parseContainer(parsed.update),
+      parseContainerPayload(parsed.update),
       status,
       errorMessage,
       serverProtocolVersion

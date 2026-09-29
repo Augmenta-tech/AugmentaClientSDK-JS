@@ -149,20 +149,24 @@ test('Control setup messages expose scene and zone hierarchy', () => {
       world: {
         name: 'World',
         type: 'Container',
-        children: [{
-          name: 'Scene',
-          type: 'Scene',
-          address: '/world/scene',
-          size: [10, 3, 8],
-          children: [{
-            name: 'Zone',
-            type: 'Zone',
-            address: '/world/scene/zone',
-            position: [1, 2, 3],
-            rotation: [0, 45, 0],
-            shape: { type: 'Box', boxSize: [2, 1, 4] }
-          }]
-        }]
+        children: {
+          scene: {
+            name: 'Scene',
+            type: 'Scene',
+            address: '/world/scene',
+            size: [10, 3, 8],
+            children: {
+              zone: {
+                name: 'Zone',
+                type: 'Zone',
+                address: '/world/scene/zone',
+                position: [1, 2, 3],
+                rotation: [0, 45, 0],
+                shape: { type: 'Box', boxSize: [2, 1, 4] }
+              }
+            }
+          }
+        }
       }
     }
   }));
@@ -176,6 +180,29 @@ test('Control setup messages expose scene and zone hierarchy', () => {
   assert.equal(zone.getType(), ContainerType.Zone);
   assert.equal(zone.getZoneParameters().getShapeType(), ShapeType.Box);
   assert.deepEqual(zone.getZoneParameters().getBoxShapeParameters().size, [2, 1, 4]);
+});
+
+test('Control update messages unwrap Pleiades short-name maps', () => {
+  const client = new Client();
+  client.initialize('test', { useCompression: false });
+
+  const message = client.parseControlMessage(JSON.stringify({
+    update: {
+      scene: {
+        name: 'Scene',
+        type: 'Scene',
+        address: '/world/scene',
+        position: [2, 0, 3],
+        rotation: [0, 15, 0],
+        size: [12, 4, 9]
+      }
+    }
+  }));
+
+  assert.equal(message.isUpdate(), true);
+  assert.equal(message.getRootObject().getType(), ContainerType.Scene);
+  assert.equal(message.getRootObject().getAddress(), '/world/scene');
+  assert.deepEqual(message.getRootObject().getSceneParameters().size, [12, 4, 9]);
 });
 
 test('V2 binary bundle parses scene, cluster and zone event', () => {
