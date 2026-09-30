@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import {
   AugmentaWebSocketClient,
   AxisMode,
   Client,
+  ClusterProperty,
   ClusterState,
   ContainerType,
   CoordinateSpace,
@@ -28,6 +30,30 @@ const f32 = (value) => { const b = new Uint8Array(4); new DataView(b.buffer).set
 const u8 = (value) => Uint8Array.of(value);
 const str = (value) => encoder.encode(value);
 const packet = (type, payload) => concat(i32(5 + payload.length), u8(type), payload);
+
+function fixtureBytes(name) {
+  const hex = readFileSync(new URL(`./fixtures/${name}.hex`, import.meta.url), 'utf8')
+    .replace(/\s+/g, '');
+  return Uint8Array.from(hex.match(/.{2}/g) ?? [], (byte) => Number.parseInt(byte, 16));
+}
+
+function pointCloudObjectPacket(pointCount) {
+  const coordinates = new Uint8Array(pointCount * 3 * 4);
+  const view = new DataView(coordinates.buffer);
+  if (pointCount > 0) {
+    view.setFloat32(0, 1, true);
+    view.setFloat32(4, 2, true);
+    view.setFloat32(8, 3, true);
+    const last = (pointCount - 1) * 12;
+    view.setFloat32(last, -1, true);
+    view.setFloat32(last + 4, -2, true);
+    view.setFloat32(last + 8, -3, true);
+  }
+
+  const propertyPayload = concat(i32(pointCount), coordinates);
+  const property = concat(i32(8 + propertyPayload.length), i32(0), propertyPayload);
+  return packet(0, concat(i32(7), i32(1), property));
+}
 
 function scenePacket(address = '/world/scene', timestamp) {
   const addressBytes = str(address);
@@ -321,4 +347,255 @@ test('WebSocket convenience defaults to uncompressed frames for zero-config web 
   augmenta.connect();
   socket.emit('open', {});
   assert.equal(JSON.parse(socket.sent[0]).register.options.useCompression, false);
+});
+
+
+test('ProtocolOptions rejects unsupported protocol versions', () => {
+  assert.throws(() => new ProtocolOptions({ version: 1 }), RangeError);
+  assert.doesNotThrow(() => new ProtocolOptions({ version: 2 }));
+  assert.doesNotThrow(() => new ProtocolOptions({ version: 3 }));
+  assert.throws(() => new ProtocolOptions({ version: 4 }), RangeError);
+});
+
+test('Rotation getters reject the wrong wire representation', () => {
+  const quaternion = new ClusterProperty(
+    ClusterState.Updated,
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+    [1, 1, 1],
+    1,
+    [0, 0, 0, 1],
+    [0, 0, 1]
+  );
+  assert.throws(() => quaternion.getBoundingBoxRotationEuler(), /not Euler/);
+  assert.deepEqual(quaternion.getBoundingBoxRotationQuaternions(), [0, 0, 0, 1]);
+
+  const euler = new ClusterProperty(
+    ClusterState.Updated,
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+    [1, 1, 1],
+    1,
+    [10, 20, 30],
+    [0, 0, 1]
+  );
+  assert.deepEqual(euler.getBoundingBoxRotationEuler(), [10, 20, 30]);
+  assert.throws(() => euler.getBoundingBoxRotationQuaternions(), /not quaternion/);
+});
+
+test('Pleiades V2 wire fixture parses standalone/cluster/zone point clouds and properties', () => {
+  const client = new Client();
+  client.initialize('fixture-v2', {
+    version: 2,
+    useCompression: false,
+    displayPointIntensity: true
+  });
+
+  const data = client.parseDataBlob(fixtureBytes('pleiades-v2'));
+  assert.equal(data.getSceneInfo().getAddress(), '/fixture/scene');
+  assert.equal(data.getObjectCount(), 2);
+
+  const standalone = data.getObjects()[0];
+  assert.equal(standalone.getID(), 0);
+  assert.equal(standalone.hasCluster(), false);
+  assert.equal(standalone.getPointCloud().getPointCount(), 2);
+  assert.deepEqual(Array.from(standalone.getPointCloud().getPointsData()), [
+    1, 2, 3, -1.5, 0.25, 4.5
+  ]);
+  assert.deepEqual(
+    Array.from(standalone.getPointCloud().getIntensityData(), (value) => Number(value.toFixed(3))),
+    [0.1, 0.9]
+  );
+
+  const tracked = data.getObjects()[1];
+  assert.equal(tracked.getID(), 42);
+  assert.equal(tracked.hasCluster(), true);
+  assert.equal(tracked.hasPointCloud(), true);
+  assert.deepEqual(
+    tracked.getCluster().getVelocity().map((value) => Number(value.toFixed(3))),
+    [0.1, 0.2, 0.3]
+  );
+
+  const zone = data.getZoneEvents()[0];
+  assert.equal(zone.getEmitterZoneAddress(), '/fixture/scene/zone');
+  assert.equal(zone.getPresence(), 2);
+  assert.equal(zone.getProperties().length, 3);
+  assert.equal(
+    Number(zone.getProperties()[0].getSliderParameters().value.toFixed(3)),
+    0.25
+  );
+  assert.deepEqual(
+    [
+      zone.getProperties()[1].getXYPadParameters().x,
+      zone.getProperties()[1].getXYPadParameters().y
+    ].map((value) => Number(value.toFixed(3))),
+    [0.2, 0.7]
+  );
+  assert.equal(zone.getProperties()[2].getPointCloudParameters().getPointCount(), 2);
+});
+
+test('Pleiades V3 wire fixture parses UUIDs, readable IDs and timestamps', () => {
+  const client = new Client();
+  client.initialize('fixture-v3', {
+    version: 3,
+    useCompression: false,
+    displayPointIntensity: true
+  });
+
+  const data = client.parseDataBlob(fixtureBytes('pleiades-v3'));
+  assert.equal(data.timestamp, 7654321);
+  assert.equal(data.getSceneInfo().getAddress(), '/v3/scene');
+  assert.equal(data.getSceneInfo().getTimestamp(), 1234);
+  assert.equal(data.getObjectCount(), 1);
+
+  const object = data.getObjects()[0];
+  assert.equal(object.getUUID(), '00112233-4455-6677-8899-aabbccddeeff');
+  assert.equal(object.getID(), 77);
+  assert.equal(object.getPointCloud().getPointCount(), 2);
+  assert.deepEqual(
+    object.getCluster().getVelocity().map((value) => Number(value.toFixed(3))),
+    [0.4, -0.5, 0.6]
+  );
+});
+
+test('Large point clouds parse without per-coordinate allocation hazards', () => {
+  const pointCount = 100_000;
+  const client = new Client();
+  client.initialize('large-cloud', { version: 2, useCompression: false });
+
+  const object = client.parseDataBlob(pointCloudObjectPacket(pointCount)).getObjects()[0];
+  const cloud = object.getPointCloud();
+  assert.equal(cloud.getPointCount(), pointCount);
+  assert.deepEqual(cloud.getPoint(0), [1, 2, 3]);
+  assert.deepEqual(cloud.getPoint(pointCount - 1), [-1, -2, -3]);
+});
+
+test('Malformed point counts are rejected before allocating their declared payload', () => {
+  const propertyPayload = i32(2_000_000_000);
+  const property = concat(i32(8 + propertyPayload.length), i32(0), propertyPayload);
+  const malformed = packet(0, concat(i32(7), i32(1), property));
+
+  const client = new Client();
+  client.initialize('malformed-cloud', { version: 2, useCompression: false });
+  assert.throws(
+    () => client.parseDataBlob(malformed),
+    /point cloud coordinates/
+  );
+});
+
+test('Nested packet sizes cannot escape their enclosing bundle boundary', () => {
+  const child = packet(99, new Uint8Array());
+  const malformedBundle = concat(
+    i32(9),
+    u8(255),
+    i32(1),
+    child
+  );
+
+  const client = new Client();
+  client.initialize('nested-boundary', { version: 2, useCompression: false });
+  assert.throws(
+    () => client.parseDataBlob(malformedBundle),
+    /Malformed Augmenta packet/
+  );
+});
+
+test('Unknown packet families are skipped by their declared packet size', () => {
+  const unknown = packet(99, Uint8Array.of(1, 2, 3, 4));
+  const knownScene = scenePacket('/known/scene');
+  const bundle = packet(255, concat(i32(2), unknown, knownScene));
+
+  const client = new Client();
+  client.initialize('future-packet', { version: 2, useCompression: false });
+  const data = client.parseDataBlob(bundle);
+  assert.equal(data.getSceneInfo().getAddress(), '/known/scene');
+});
+
+test('WebSocket convenience ignores delayed events from a replaced socket', () => {
+  class FakeSocket {
+    readyState = 0;
+    binaryType = '';
+    sent = [];
+    listeners = new Map();
+    send(data) { this.sent.push(data); }
+    close() { this.readyState = 3; }
+    addEventListener(type, listener) {
+      const list = this.listeners.get(type) ?? [];
+      list.push(listener);
+      this.listeners.set(type, list);
+    }
+    emit(type, event) {
+      for (const listener of this.listeners.get(type) ?? []) listener(event);
+    }
+  }
+
+  const sockets = [];
+  const augmenta = new AugmentaWebSocketClient('ws://localhost', {
+    webSocketFactory: () => {
+      const socket = new FakeSocket();
+      sockets.push(socket);
+      return socket;
+    }
+  });
+
+  let setups = 0;
+  augmenta.on('setup', () => { setups++; });
+
+  augmenta.connect();
+  const first = sockets[0];
+  first.readyState = 1;
+  first.emit('open', {});
+
+  augmenta.disconnect();
+  augmenta.connect();
+  const second = sockets[1];
+  second.readyState = 1;
+  second.emit('open', {});
+
+  first.emit('close', {});
+  first.emit('message', {
+    data: JSON.stringify({ status: 'ok', version: 2, setup: { world: { name: 'stale' } } })
+  });
+
+  assert.equal(augmenta.getSocket(), second);
+  assert.equal(setups, 0);
+
+  second.emit('message', {
+    data: JSON.stringify({ status: 'ok', version: 2, setup: { world: { name: 'current' } } })
+  });
+  assert.equal(setups, 1);
+});
+
+test('poll requires an open WebSocket', () => {
+  class FakeSocket {
+    readyState = 0;
+    sent = [];
+    listeners = new Map();
+    send(data) { this.sent.push(data); }
+    close() {}
+    addEventListener(type, listener) {
+      const list = this.listeners.get(type) ?? [];
+      list.push(listener);
+      this.listeners.set(type, list);
+    }
+    emit(type, event) {
+      for (const listener of this.listeners.get(type) ?? []) listener(event);
+    }
+  }
+
+  const socket = new FakeSocket();
+  const augmenta = new AugmentaWebSocketClient('ws://localhost', {
+    options: { usePolling: true },
+    webSocketFactory: () => socket
+  });
+
+  augmenta.connect();
+  assert.throws(() => augmenta.poll(), /not open/);
+
+  socket.readyState = 1;
+  socket.emit('open', {});
+  augmenta.poll();
+  assert.deepEqual(JSON.parse(socket.sent.at(-1)), { poll: true });
 });

@@ -1,3 +1,6 @@
+export const MIN_SUPPORTED_PROTOCOL_VERSION = 2;
+export const MAX_SUPPORTED_PROTOCOL_VERSION = 3;
+
 export enum RotationMode {
   Radians = 'radians',
   Degrees = 'degrees',
@@ -91,8 +94,14 @@ export class ProtocolOptions {
     if (axisTransform) this.axisTransform = new AxisTransform(axisTransform);
     if (tags) this.tags = [...tags];
 
-    if (!Number.isInteger(this.version) || this.version < 1) {
-      throw new RangeError('Protocol version must be a positive integer.');
+    if (
+      !Number.isInteger(this.version)
+      || this.version < MIN_SUPPORTED_PROTOCOL_VERSION
+      || this.version > MAX_SUPPORTED_PROTOCOL_VERSION
+    ) {
+      throw new RangeError(
+        `Protocol version must be an integer between ${MIN_SUPPORTED_PROTOCOL_VERSION} and ${MAX_SUPPORTED_PROTOCOL_VERSION}.`
+      );
     }
     if (!Number.isInteger(this.downSample) || this.downSample < 1) {
       throw new RangeError('downSample must be an integer greater than or equal to 1.');

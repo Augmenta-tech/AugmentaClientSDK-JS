@@ -16,6 +16,7 @@ export type BinaryData = ArrayBuffer | ArrayBufferView;
 export type Decompressor = (data: Uint8Array) => Uint8Array;
 
 const textDecoder = new TextDecoder();
+const littleEndian = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 
 function asUint8Array(data: BinaryData): Uint8Array {
   if (data instanceof ArrayBuffer) return new Uint8Array(data);
@@ -66,8 +67,33 @@ class Reader {
     if (!Number.isInteger(count) || count < 0) {
       throw new RangeError(`Invalid float count while reading ${context}.`);
     }
-    const output = new Float32Array(count);
-    for (let i = 0; i < count; i++) output[i] = this.f32(context);
+
+    const byteLength = count * Float32Array.BYTES_PER_ELEMENT;
+    if (!Number.isSafeInteger(byteLength)) {
+      throw new RangeError(`Invalid float byte length while reading ${context}.`);
+    }
+    this.ensure(byteLength, context);
+
+    const absoluteOffset = this.bytes.byteOffset + this.offset;
+    let output: Float32Array;
+
+    if (littleEndian && absoluteOffset % Float32Array.BYTES_PER_ELEMENT === 0) {
+      output = new Float32Array(this.bytes.buffer, absoluteOffset, count);
+    } else if (littleEndian) {
+      // Pleiades' compact packet headers often leave float payloads unaligned.
+      // Copy the byte range natively instead of issuing one DataView read per
+      // coordinate; this is substantially cheaper for large point clouds.
+      output = new Float32Array(
+        this.bytes.buffer.slice(absoluteOffset, absoluteOffset + byteLength)
+      );
+    } else {
+      output = new Float32Array(count);
+      for (let i = 0; i < count; i++) {
+        output[i] = this.view.getFloat32(this.offset + i * 4, true);
+      }
+    }
+
+    this.offset += byteLength;
     return output;
   }
 
@@ -105,11 +131,26 @@ interface ParsedBlobState {
   timestamp?: number;
 }
 
+function ensureWithin(reader: Reader, end: number, size: number, context: string): void {
+  if (
+    !Number.isSafeInteger(size)
+    || size < 0
+    || reader.offset + size > end
+    || end > reader.length
+  ) {
+    throw new RangeError(`Malformed Augmenta packet while reading ${context}.`);
+  }
+}
+
 function parsePointCloud(reader: Reader, options: ProtocolOptions, end: number): PointCloudProperty {
+  ensureWithin(reader, end, 4, 'point count');
   const pointCount = reader.i32('point count');
   if (pointCount < 0) throw new RangeError('Malformed Augmenta point count.');
 
-  const points = reader.floats(pointCount * 3, 'point cloud coordinates');
+  const coordinateCount = pointCount * 3;
+  const coordinateBytes = coordinateCount * Float32Array.BYTES_PER_ELEMENT;
+  ensureWithin(reader, end, coordinateBytes, 'point cloud coordinates');
+  const points = reader.floats(coordinateCount, 'point cloud coordinates');
   let intensity: Float32Array | undefined;
   if (options.displayPointIntensity && reader.offset + pointCount * 4 <= end) {
     intensity = reader.floats(pointCount, 'point cloud intensity');
@@ -120,14 +161,28 @@ function parsePointCloud(reader: Reader, options: ProtocolOptions, end: number):
     : new PointCloudProperty(points, intensity);
 }
 
-function parseCluster(reader: Reader, options: ProtocolOptions): { cluster: ClusterProperty; readableID?: number } {
+function parseCluster(
+  reader: Reader,
+  options: ProtocolOptions,
+  end: number
+): { cluster: ClusterProperty; readableID?: number } {
+  const rotationCount = options.boxRotationMode === RotationMode.Quaternions ? 4 : 3;
+  const requiredBytes = (
+    4
+    + 4 * 3 * 4
+    + 4
+    + rotationCount * 4
+    + 3 * 4
+    + (options.version >= 3 ? 4 : 0)
+  );
+  ensureWithin(reader, end, requiredBytes, 'cluster property');
+
   const state = reader.i32('cluster state') as ClusterState;
   const centroid = reader.vec3('cluster centroid');
   const velocity = reader.vec3('cluster velocity');
   const boundingBoxCenter = reader.vec3('bounding box center');
   const boundingBoxSize = reader.vec3('bounding box size');
   const weight = reader.f32('cluster weight');
-  const rotationCount = options.boxRotationMode === RotationMode.Quaternions ? 4 : 3;
   const rotation = Array.from(reader.floats(rotationCount, 'bounding box rotation'));
   const lookAt = reader.vec3('cluster look-at');
 
@@ -153,6 +208,8 @@ function formatUUID(bytes: Uint8Array): string {
 }
 
 function parseObject(reader: Reader, options: ProtocolOptions, packetEnd: number): ObjectPacket {
+  ensureWithin(reader, packetEnd, options.version >= 3 ? 20 : 8, 'object header');
+
   let id: number | undefined;
   let uuid: string | undefined;
   if (options.version >= 3) {
@@ -169,6 +226,7 @@ function parseObject(reader: Reader, options: ProtocolOptions, packetEnd: number
   let pointCloud: PointCloudProperty | undefined;
 
   for (let i = 0; i < propertiesCount; i++) {
+    ensureWithin(reader, packetEnd, 8, 'object property header');
     const propertyStart = reader.offset;
     const propertySize = reader.i32('object property size');
     const propertyType = reader.i32('object property type') as ObjectPropertyType;
@@ -180,7 +238,7 @@ function parseObject(reader: Reader, options: ProtocolOptions, packetEnd: number
     if (propertyType === ObjectPropertyType.Points) {
       pointCloud = parsePointCloud(reader, options, propertyEnd);
     } else if (propertyType === ObjectPropertyType.Cluster) {
-      const parsedCluster = parseCluster(reader, options);
+      const parsedCluster = parseCluster(reader, options, propertyEnd);
       cluster = parsedCluster.cluster;
       if (parsedCluster.readableID !== undefined) id = parsedCluster.readableID;
     }
@@ -195,8 +253,10 @@ function parseObject(reader: Reader, options: ProtocolOptions, packetEnd: number
 }
 
 function parseZoneEvent(reader: Reader, options: ProtocolOptions, packetEnd: number): ZoneEventPacket {
+  ensureWithin(reader, packetEnd, 4, 'zone address size');
   const addressSize = reader.i32('zone address size');
   if (addressSize < 0) throw new RangeError('Malformed Augmenta zone address size.');
+  ensureWithin(reader, packetEnd, addressSize + 14, 'zone header');
   const address = reader.string(addressSize, 'zone address');
   const enters = reader.u8('zone enters');
   const leaves = reader.u8('zone leaves');
@@ -207,6 +267,7 @@ function parseZoneEvent(reader: Reader, options: ProtocolOptions, packetEnd: num
 
   const properties: ZoneEventProperty[] = [];
   for (let i = 0; i < propertiesCount; i++) {
+    ensureWithin(reader, packetEnd, 5, 'zone property header');
     const propertyStart = reader.offset;
     const propertySize = reader.i32('zone property size');
     const propertyType = reader.u8('zone property type') as ZonePropertyType;
@@ -216,8 +277,10 @@ function parseZoneEvent(reader: Reader, options: ProtocolOptions, packetEnd: num
     }
 
     if (propertyType === ZonePropertyType.Slider) {
+      ensureWithin(reader, propertyEnd, 4, 'zone slider');
       properties.push(new ZoneEventProperty(propertyType, { value: reader.f32('zone slider') }));
     } else if (propertyType === ZonePropertyType.XYPad) {
+      ensureWithin(reader, propertyEnd, 8, 'zone XY pad');
       properties.push(new ZoneEventProperty(propertyType, {
         x: reader.f32('zone XY pad x'),
         y: reader.f32('zone XY pad y')
@@ -232,40 +295,60 @@ function parseZoneEvent(reader: Reader, options: ProtocolOptions, packetEnd: num
   return new ZoneEventPacket(address, enters, leaves, presence, density, properties);
 }
 
-function parseScene(reader: Reader, options: ProtocolOptions): SceneInfoPacket {
+function parseScene(reader: Reader, options: ProtocolOptions, packetEnd: number): SceneInfoPacket {
+  ensureWithin(reader, packetEnd, 4, 'scene address size');
   const addressSize = reader.i32('scene address size');
   if (addressSize < 0) throw new RangeError('Malformed Augmenta scene address size.');
+  ensureWithin(
+    reader,
+    packetEnd,
+    addressSize + (options.version >= 3 ? 4 : 0),
+    'scene packet'
+  );
   const address = reader.string(addressSize, 'scene address');
   if (options.version >= 3) return new SceneInfoPacket(address, reader.i32('scene timestamp'));
   return new SceneInfoPacket(address);
 }
 
-function parsePacket(reader: Reader, state: ParsedBlobState, options: ProtocolOptions): void {
+function parsePacket(
+  reader: Reader,
+  state: ParsedBlobState,
+  options: ProtocolOptions,
+  parentEnd = reader.length
+): void {
   const packetStart = reader.offset;
+  ensureWithin(reader, parentEnd, 5, 'packet header');
   const packetSize = reader.i32('packet size');
   const type = reader.u8('packet type') as PacketType;
   const packetEnd = packetStart + packetSize;
 
-  if (packetSize < 5 || packetEnd > reader.length) {
+  if (packetSize < 5 || packetEnd > parentEnd || packetEnd > reader.length) {
     throw new RangeError('Malformed Augmenta packet size.');
   }
 
   if (type === PacketType.Bundle) {
+    ensureWithin(
+      reader,
+      packetEnd,
+      (options.version >= 3 ? 4 : 0) + 4,
+      'bundle header'
+    );
     if (options.version >= 3) state.timestamp = reader.i32('bundle timestamp');
     const packetCount = reader.i32('bundle packet count');
     if (packetCount < 0) throw new RangeError('Malformed Augmenta bundle packet count.');
-    for (let i = 0; i < packetCount; i++) parsePacket(reader, state, options);
+    for (let i = 0; i < packetCount; i++) {
+      parsePacket(reader, state, options, packetEnd);
+    }
   } else if (type === PacketType.Object) {
     state.objects.push(parseObject(reader, options, packetEnd));
   } else if (type === PacketType.ZoneEvent) {
     state.zoneEvents.push(parseZoneEvent(reader, options, packetEnd));
   } else if (type === PacketType.Scene) {
-    state.sceneInfo = parseScene(reader, options);
-  } else {
-    throw new Error(`Unknown Augmenta packet type ${type}.`);
+    state.sceneInfo = parseScene(reader, options, packetEnd);
   }
+  // Unknown packet families are skipped to their declared boundary. Packet size
+  // is authoritative, matching the forward-compatible property behavior.
 
-  // Packet size comes from Pleiades and is authoritative. It lets clients ignore future fields safely.
   reader.seek(packetEnd, 'packet');
 }
 
