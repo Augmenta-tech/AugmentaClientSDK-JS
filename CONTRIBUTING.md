@@ -5,7 +5,7 @@ Keep changes small, protocol-focused and backward-compatible whenever possible.
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run check
 ```
 
