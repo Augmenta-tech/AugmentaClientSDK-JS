@@ -21,6 +21,7 @@ Supported:
 
 - Augmenta WebSocket protocol V2 binary data;
 - current Pleiades V3 bundle/object/scene extensions, including timestamps and UUID-based object packets;
+- explicit protocol-version guard: only verified V2/V3 layouts are accepted;
 - clusters, point clouds and scene information;
 - zone enter/leave/presence/density events;
 - zone slider, XY pad and optional zone point-cloud properties;
@@ -33,8 +34,7 @@ Legacy binary protocol V1 is intentionally not implemented in this first version
 
 ## TODO before 1.0
 
-- Validate V2/V3 end-to-end against live Pleiades streams and keep captured binary fixtures.
-- Expand regression coverage for standalone point clouds, cluster + point-cloud packets, zone properties, and malformed/truncated packets.
+- Validate the committed V2/V3 protocol-writer fixtures against live Pleiades captures.
 - Decide whether the WebSocket convenience client should handle protocol negotiation/fallback automatically.
 - Exercise the SDK in browser, Node.js, and Max/MSP / Max for Live integrations.
 - Finalize npm publishing, release notes/changelog, and stable 1.0 documentation.
@@ -50,7 +50,7 @@ npm install augmenta-client-sdk
 From this repository during development:
 
 ```bash
-npm install
+npm ci
 npm run build
 npm test
 ```
@@ -189,8 +189,8 @@ const options = new ProtocolOptions({
 2. **Same concepts across SDKs** — `Client`, `ProtocolOptions`, `DataBlob` and `ControlMessage` stay recognizable across C++, C# and JavaScript.
 3. **Transport independent** — parsing is usable from a browser, Node.js, Max/MSP, tests or another transport.
 4. **Small and predictable** — no framework and no runtime dependency.
-5. **Forward-compatible parsing** — packet/property sizes are respected so unknown future properties can be skipped safely.
-6. **Web-friendly data** — arrays and typed arrays are exposed directly and can be fed efficiently into rendering/application code.
+5. **Forward-compatible parsing** — packet/property sizes are respected so unknown future properties/packet families can be skipped safely within their declared boundaries.
+6. **Web-friendly data** — arrays and typed arrays are exposed directly and the point parser uses bulk typed-array paths for large clouds instead of one JavaScript read per coordinate.
 
 ## License
 
