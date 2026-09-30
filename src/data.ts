@@ -32,6 +32,7 @@ export class ClusterProperty {
 
   getState(): ClusterState { return this.state; }
   getCentroid(): Vector3 { return this.centroid; }
+  /** Velocity received from Augmenta in the requested axis/coordinate convention. */
   getVelocity(): Vector3 { return this.velocity; }
   getBoundingBoxCenter(): Vector3 { return this.boundingBoxCenter; }
   getBoundingBoxSize(): Vector3 { return this.boundingBoxSize; }

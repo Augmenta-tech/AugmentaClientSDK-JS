@@ -73,7 +73,7 @@ function v3ObjectPacket() {
   const clusterPayload = concat(
     i32(ClusterState.Entered),
     f32(1), f32(2), f32(3),
-    f32(0), f32(0), f32(0),
+    f32(0.4), f32(-0.5), f32(0.6),
     f32(1), f32(1), f32(1),
     f32(2), f32(2), f32(2),
     f32(1),
@@ -218,6 +218,10 @@ test('V2 binary bundle parses scene, cluster and zone event', () => {
   assert.equal(object.getID(), 42);
   assert.equal(object.getCluster().getState(), ClusterState.Updated);
   assert.deepEqual(object.getCluster().getCentroid(), [1, 2, 3]);
+  assert.deepEqual(
+    object.getCluster().getVelocity().map((value) => Number(value.toFixed(6))),
+    [0.1, 0.2, 0.3]
+  );
   assert.deepEqual(object.getCluster().getBoundingBoxRotationQuaternions(), [0, 0, 0, 1]);
 
   assert.equal(data.getZoneEventCount(), 1);
@@ -238,6 +242,10 @@ test('V3 bundle follows the current Pleiades timestamp header', () => {
   assert.equal(data.getSceneInfo().getTimestamp(), 1234);
   assert.equal(data.getObjects()[0].getID(), 77);
   assert.equal(data.getObjects()[0].getUUID(), '00112233-4455-6677-8899-aabbccddeeff');
+  assert.deepEqual(
+    data.getObjects()[0].getCluster().getVelocity().map((value) => Number(value.toFixed(6))),
+    [0.4, -0.5, 0.6]
+  );
 });
 
 test('Compression is transport-agnostic through an injected synchronous decompressor', () => {
