@@ -93,20 +93,32 @@ export class AugmentaWebSocketClient {
     if ('binaryType' in socket) socket.binaryType = 'arraybuffer';
 
     socket.addEventListener('open', (event) => {
+      if (this.socket !== socket) return;
       socket.send(this.client.getRegisterMessage());
       this.emit('open', event);
     });
 
     socket.addEventListener('message', (event) => {
-      void this.handleMessage(event.data).catch((error: unknown) => this.emit('error', error));
+      if (this.socket !== socket) return;
+      void this.handleMessage(event.data, socket).catch((error: unknown) => {
+        if (this.socket === socket) this.emit('error', error);
+      });
     });
 
     socket.addEventListener('close', (event) => {
-      this.socket = undefined;
-      this.emit('close', event);
+      if (this.socket === socket) {
+        this.socket = undefined;
+        this.emit('close', event);
+      } else if (this.socket === undefined) {
+        // Preserve the close event for an explicit disconnect, but never let a
+        // delayed close from an old socket disturb a newer connection.
+        this.emit('close', event);
+      }
     });
 
-    socket.addEventListener('error', (event) => this.emit('error', event));
+    socket.addEventListener('error', (event) => {
+      if (this.socket === socket) this.emit('error', event);
+    });
   }
 
   disconnect(code?: number, reason?: string): void {
@@ -116,13 +128,17 @@ export class AugmentaWebSocketClient {
   }
 
   poll(): void {
-    if (!this.socket) throw new Error('WebSocket client is not connected.');
+    if (!this.socket || this.socket.readyState !== 1) {
+      throw new Error('WebSocket client is not open.');
+    }
     this.socket.send(this.client.getPollMessage());
   }
 
   getSocket(): WebSocketLike | undefined { return this.socket; }
 
-  private async handleMessage(data: unknown): Promise<void> {
+  private async handleMessage(data: unknown, sourceSocket: WebSocketLike): Promise<void> {
+    if (this.socket !== sourceSocket) return;
+
     if (typeof data === 'string') {
       const message = this.client.parseControlMessage(data);
       this.emit('controlMessage', message);
@@ -137,6 +153,7 @@ export class AugmentaWebSocketClient {
     else if (typeof Blob !== 'undefined' && data instanceof Blob) binary = await data.arrayBuffer();
     else throw new TypeError('Unsupported WebSocket message type.');
 
+    if (this.socket !== sourceSocket) return;
     this.emit('data', this.client.parseDataBlob(binary));
   }
 
