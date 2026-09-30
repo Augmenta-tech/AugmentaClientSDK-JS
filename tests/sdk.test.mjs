@@ -162,6 +162,7 @@ test('Control setup messages expose scene and zone hierarchy', () => {
                 address: '/world/scene/zone',
                 position: [1, 2, 3],
                 rotation: [0, 45, 0],
+                localSliderAxis: 'z',
                 shape: { type: 'Box', boxSize: [2, 1, 4] }
               }
             }
@@ -181,6 +182,7 @@ test('Control setup messages expose scene and zone hierarchy', () => {
   const zone = scene.getChildren()[0];
   assert.equal(zone.getType(), ContainerType.Zone);
   assert.equal(zone.getZoneParameters().getShapeType(), ShapeType.Box);
+  assert.equal(zone.getZoneParameters().getLocalSliderAxis(), 'z');
   assert.deepEqual(zone.getZoneParameters().getBoxShapeParameters().size, [2, 1, 4]);
 });
 
