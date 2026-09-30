@@ -15,7 +15,7 @@ The package has **no runtime dependency** and is designed for browsers, web appl
 
 ## Status
 
-This repository currently provides the V1 functional base of the JavaScript SDK.
+This repository is the first public beta of the JavaScript SDK (`1.0b`).
 
 Supported:
 
@@ -30,6 +30,14 @@ Supported:
 - ESM and CommonJS builds plus TypeScript declarations.
 
 Legacy binary protocol V1 is intentionally not implemented in this first version.
+
+## TODO before 1.0
+
+- Validate V2/V3 end-to-end against live Pleiades streams and keep captured binary fixtures.
+- Expand regression coverage for standalone point clouds, cluster + point-cloud packets, zone properties, and malformed/truncated packets.
+- Decide whether the WebSocket convenience client should handle protocol negotiation/fallback automatically.
+- Exercise the SDK in browser, Node.js, and Max/MSP / Max for Live integrations.
+- Finalize npm publishing, release notes/changelog, and stable 1.0 documentation.
 
 ## Install
 
