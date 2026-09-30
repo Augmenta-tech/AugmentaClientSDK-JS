@@ -38,7 +38,9 @@ export class ClusterProperty {
   getBoundingBoxSize(): Vector3 { return this.boundingBoxSize; }
   getWeight(): number { return this.weight; }
   getBoundingBoxRotationEuler(): Vector3 {
-    if (this.boundingBoxRotation.length < 3) throw new Error('Rotation data is unavailable.');
+    if (this.boundingBoxRotation.length !== 3) {
+      throw new Error('Rotation mode is not Euler.');
+    }
     return [this.boundingBoxRotation[0]!, this.boundingBoxRotation[1]!, this.boundingBoxRotation[2]!];
   }
   getBoundingBoxRotationQuaternions(): Vector4 {
