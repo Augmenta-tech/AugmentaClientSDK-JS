@@ -206,14 +206,17 @@ export interface CylinderShapeParameters { readonly radius: number; readonly hei
 export interface SphereShapeParameters { readonly radius: number; }
 export interface EmptyShapeParameters {}
 export type ShapeParameters = BoxShapeParameters | CylinderShapeParameters | SphereShapeParameters | EmptyShapeParameters;
+export type SliderAxis = 'x' | 'y' | 'z';
 
 export class ZoneParameters {
   constructor(
     public readonly shapeType: ShapeType,
-    public readonly shapeParameters: ShapeParameters
+    public readonly shapeParameters: ShapeParameters,
+    public readonly localSliderAxis: SliderAxis = 'x'
   ) {}
 
   getShapeType(): ShapeType { return this.shapeType; }
+  getLocalSliderAxis(): SliderAxis { return this.localSliderAxis; }
   isBox(): boolean { return this.shapeType === ShapeType.Box; }
   isCylinder(): boolean { return this.shapeType === ShapeType.Cylinder; }
   isSphere(): boolean { return this.shapeType === ShapeType.Sphere; }
