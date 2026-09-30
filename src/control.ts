@@ -83,6 +83,9 @@ function parseContainer(value: unknown): Container {
       default: break;
     }
 
+    const rawSliderAxis = value.localSliderAxis;
+    const localSliderAxis = rawSliderAxis === 'y' || rawSliderAxis === 'z' ? rawSliderAxis : 'x';
+
     return new Container(
       ContainerType.Zone,
       name,
@@ -90,7 +93,7 @@ function parseContainer(value: unknown): Container {
       position,
       rotation,
       color,
-      new ZoneParameters(shapeType, shapeParameters),
+      new ZoneParameters(shapeType, shapeParameters, localSliderAxis),
       children
     );
   }
