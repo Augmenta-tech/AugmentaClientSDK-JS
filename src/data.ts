@@ -252,6 +252,8 @@ export class Container {
     public readonly position: Vector3 = [0, 0, 0],
     public readonly rotation: Vector3 = [0, 0, 0],
     public readonly color: Vector4 = [0, 0, 0, 0],
+    /** Stable UUID supplied by the server for setup/update containers. */
+    public readonly uuid = '',
     public readonly parameters?: ContainerSpecificParameters,
     public readonly children: readonly Container[] = []
   ) {}
@@ -268,6 +270,7 @@ export class Container {
   getPosition(): Vector3 { return this.position; }
   getRotation(): Vector3 { return this.rotation; }
   getColor(): Vector4 { return this.color; }
+  getUUID(): string { return this.uuid; }
   getSceneParameters(): SceneParameters {
     if (!this.isScene()) throw new Error('Container is not a scene.');
     return this.parameters as SceneParameters;
