@@ -186,6 +186,7 @@ test('Control setup messages expose scene and zone hierarchy', () => {
                 name: 'Zone',
                 type: 'Zone',
                 address: '/world/scene/zone',
+                uuid: 'zone-uuid-123',
                 position: [1, 2, 3],
                 rotation: [0, 45, 0],
                 localSliderAxis: 'z',
@@ -207,6 +208,7 @@ test('Control setup messages expose scene and zone hierarchy', () => {
   assert.deepEqual(scene.getSceneParameters().size, [10, 3, 8]);
   const zone = scene.getChildren()[0];
   assert.equal(zone.getType(), ContainerType.Zone);
+  assert.equal(zone.getUUID(), 'zone-uuid-123');
   assert.equal(zone.getZoneParameters().getShapeType(), ShapeType.Box);
   assert.equal(zone.getZoneParameters().getLocalSliderAxis(), 'z');
   assert.deepEqual(zone.getZoneParameters().getBoxShapeParameters().size, [2, 1, 4]);
