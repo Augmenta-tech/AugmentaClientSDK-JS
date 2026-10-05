@@ -67,7 +67,7 @@ const options = new ProtocolOptions({
   streamClusters: true,
   streamClusterPoints: false,
   streamZonePoints: false,
-  useCompression: false
+  useCompression: true
 });
 
 const client = new Client();
@@ -125,7 +125,7 @@ const augmenta = new AugmentaWebSocketClient('ws://augmenta-server:PORT', {
     streamClouds: false,
     streamClusters: true,
     streamClusterPoints: false,
-    useCompression: false
+    useCompression: true
   }
 });
 
@@ -147,27 +147,46 @@ augmenta.connect();
 
 Modern browsers provide `WebSocket` globally. Other runtimes can pass a `webSocketFactory` without changing the SDK core.
 
-## Compression
+## Production WebSocket practices
 
-Augmenta can Zstd-compress binary WebSocket frames. The C++ SDK enables compression by default, and this SDK keeps the same `ProtocolOptions` default.
+### Compression
 
-To keep the JavaScript package small, dependency-free and browser-neutral, decompression is injected by the host application:
+Augmenta can Zstd-compress binary WebSocket frames. Compression is enabled by default in `ProtocolOptions` and is the recommended setting for production clients, especially when streaming scene or cluster point clouds. It reduces network bandwidth at the cost of decompression work on the client.
+
+The JavaScript package deliberately does not bundle a Zstd implementation. Applications that enable compression must provide a decompressor:
 
 ```ts
-const client = new Client({
-  decompressor: (compressed) => myZstdDecoder(compressed)
+const augmenta = new AugmentaWebSocketClient('ws://augmenta-server:PORT', {
+  decompressor: (compressed) => myZstdDecoder(compressed),
+  options: {
+    useCompression: true
+  }
 });
 ```
 
-For lightweight tracking clients such as web visualizations or Max for Live, disabling compression and raw point clouds is usually the simplest starting point:
+If the host cannot provide Zstd decompression, explicitly set `useCompression: false`. Do not rely on the WebSocket convenience client's current transport fallback: its constructor disables compression when no option is supplied so a zero-dependency browser client remains usable. Applications should make the choice explicit.
 
-```ts
-const options = new ProtocolOptions({
-  useCompression: false,
-  streamClouds: false,
-  streamClusterPoints: false
-});
-```
+### Reconnection and state refresh
+
+Treat each WebSocket connection as a new Augmenta session:
+
+- create a fresh connection after `close` or a connection error, with a retry delay/backoff instead of a tight reconnect loop;
+- let the new socket send a fresh registration message on `open`; this requests the current setup/state again rather than trying to continue stale local state;
+- clear application-side pending tracking frames when a connection closes or when a new setup replaces the hierarchy;
+- ignore messages from an old socket after a newer connection has been created. `AugmentaWebSocketClient` already guards its own callbacks this way;
+- do not keep rendering stale tracking data indefinitely while disconnected.
+
+The [Augmenta ThreeJS example](https://github.com/Augmenta-tech/Augmenta-ThreeJS-example) is the reference browser implementation for connection lifecycle and reconnect behavior.
+
+### Buffering and backpressure
+
+Do not build an unbounded FIFO of complete Augmenta tracking frames. Point-cloud frames can be large, so an application that consumes data more slowly than it arrives can otherwise retain increasing amounts of memory and add latency.
+
+For real-time visualization, prefer a bounded **latest-state-wins** handoff: keep at most one pending state frame per scene and consume it on the application's render/update tick. Setup and hierarchy control messages should remain ordered and immediate. If an integration exposes transient edge events that must survive frame replacement, preserve/conflate those events separately rather than silently dropping them.
+
+The [Augmenta ThreeJS example](https://github.com/Augmenta-tech/Augmenta-ThreeJS-example) demonstrates this pattern: incoming tracking frames are published into a per-scene pending slot and the newest frame is consumed from the Three.js animation loop. This keeps application-side buffering bounded by the number of scenes instead of by consumer lag.
+
+The SDK intentionally does **not** impose this policy itself. `AugmentaWebSocketClient` emits parsed data as it arrives because the correct consumption cadence belongs to the host runtime (browser render loop, game-engine update, Max/MSP scheduler, server process, and so on).
 
 ## Package outputs
 
