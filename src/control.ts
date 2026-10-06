@@ -36,6 +36,7 @@ function parseContainer(value: unknown): Container {
   const position = vec3(value.position);
   const rotation = vec3(value.rotation);
   const color = vec4(value.color);
+  const uuid = typeof value.uuid === 'string' ? value.uuid : '';
   const rawChildren = Array.isArray(value.children)
     ? value.children
     : isRecord(value.children)
@@ -52,6 +53,7 @@ function parseContainer(value: unknown): Container {
       position,
       rotation,
       color,
+      uuid,
       {},
       children
     );
@@ -93,6 +95,7 @@ function parseContainer(value: unknown): Container {
       position,
       rotation,
       color,
+      uuid,
       new ZoneParameters(shapeType, shapeParameters, localSliderAxis),
       children
     );
@@ -106,13 +109,14 @@ function parseContainer(value: unknown): Container {
       position,
       rotation,
       color,
+      uuid,
       { size: vec3(value.size) },
       children
     );
   }
 
   const type = rawType ? ContainerType.Container : ContainerType.Unknown;
-  return new Container(type, name, address, position, rotation, color, {}, children);
+  return new Container(type, name, address, position, rotation, color, uuid, {}, children);
 }
 
 function parseContainerPayload(value: unknown): Container {

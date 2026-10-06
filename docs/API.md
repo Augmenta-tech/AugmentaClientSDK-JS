@@ -42,7 +42,7 @@ Main methods:
 
 Represents JSON setup/update messages.
 
-A setup message exposes a root `Container`, which can recursively contain scenes, zones and generic containers. Common fields include name, address, position, rotation, color and children.
+A setup message exposes a root `Container`, which can recursively contain scenes, zones and generic containers. Common fields include name, address, UUID, position, rotation, color and children. `getUUID()` exposes the stable server-side container UUID when provided.
 
 Scene containers expose scene size. Zone containers expose the shape information currently provided by Pleiades: Box, Cylinder, Sphere, Path, Grid, Polygon and Segment.
 
